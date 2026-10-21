@@ -1,0 +1,15 @@
+# Azure ML environment for the pipeline components. Versions match requirements.txt
+# so models trained in Azure load locally (and vice versa).
+name: telecom-churn-env
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - pip
+  - pip:
+      - scikit-learn==1.9.1
+      - mlflow==3.15.0
+      - azureml-mlflow==1.62.0.post6
+      - mldesigner==0.1.0b23
+      - pandas==2.3.3
+      - matplotlib==3.11.2

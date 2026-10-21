@@ -1,0 +1,13 @@
+# Inference environment for the --custom_scoring deployment option.
+# Library versions match training so the saved model loads unchanged.
+name: telecom-churn-inference-env
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - pip
+  - pip:
+      - azureml-inference-server-http
+      - scikit-learn==1.9.1
+      - mlflow==3.15.0
+      - pandas==2.3.3

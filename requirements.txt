@@ -1,0 +1,13 @@
+# scikit-learn and mlflow are pinned so saved models load in the same versions they were trained with.
+scikit-learn==1.9.1
+mlflow==3.15.0
+azureml-mlflow==1.62.0.post6
+azure-ai-ml==1.35.2
+azure-identity
+mldesigner==0.1.0b23
+pandas==2.3.3
+matplotlib
+flask
+flasgger
+streamlit
+requests

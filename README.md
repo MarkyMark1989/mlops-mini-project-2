@@ -1,0 +1,77 @@
+# Telecom customer churn prediction on Azure ML
+
+Code for MLOps Mini Project 2. The project predicts whether a telecom customer will cancel their service and covers data versioning, MLflow tracking, the model registry, an Azure ML pipeline built with mldesigner, a Flask API, an Azure ML online endpoint and a Streamlit app.
+
+## Contents
+
+| Path | What it is | Question |
+|---|---|---|
+| `telecom_churn_v1.csv`, `telecom_churn_v2.csv`, `DataDictionary-1.xlsx` | Data and column descriptions | |
+| `analysis/eda.py` | Exploratory analysis; writes the charts in `analysis/figures/` | 2a |
+| `src/features.py` | Column definitions, cleaning and the two derived features | 2a |
+| `src/data_prep.py` | Data preparation job | 2a |
+| `src/train.py` | Training and evaluation job, with optional randomized search | 2b, 4 |
+| `src/register.py` | Finds the latest training run and registers its model | 3 |
+| `src/tracking.py` | MLflow run handling for local runs and Azure ML jobs | 2 |
+| `src/components.py` | Pipeline components (mldesigner `@command_component`) | 5 |
+| `pipeline/data_assets.py` | Creates data asset versions 1 and 2 and counts their rows | 1 |
+| `pipeline/run_pipeline.py`, `pipeline/conda.yaml` | Builds, runs and schedules the pipeline in a reusable environment | 5 |
+| `pipeline/workspace.py` | Workspace connection; prints the MLflow tracking URI | 1 to 5 |
+| `api/app.py` | Flask API with Swagger UI | 6 |
+| `deployment/deploy.py`, `score.py`, `conda.yaml` | Online endpoint deployment, scoring script and inference environment | 7 |
+| `frontend/streamlit_app.py` | Streamlit app that calls the Azure endpoint | 8 |
+| `report/make_diagram.py` | Draws the process flow diagram for 7d | 7d |
+
+## Setup
+
+Python 3.12:
+
+```bash
+python3.12 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+```
+
+The Azure steps also need the Azure CLI with the `ml` extension (`az login`), and the workspace's `config.json` from Azure ML Studio in the project root.
+
+## Running locally
+
+Run these from the project root. MLflow stores runs in `./mlflow.db`.
+
+```bash
+.venv/bin/python analysis/eda.py
+.venv/bin/python src/data_prep.py --input_data telecom_churn_v2.csv
+.venv/bin/python src/train.py                         # baseline model
+.venv/bin/python src/train.py --tune_iterations 30    # tuned model
+.venv/bin/python src/register.py                      # register the latest training run
+.venv/bin/python api/app.py                           # Swagger UI at http://127.0.0.1:5001/apidocs/
+```
+
+The Flask API serves `outputs/model/model.pkl`, which is the model from whichever `train.py` run finished last. In the order above that is the tuned model. To serve the baseline instead (as in the report), run `src/train.py` without `--tune_iterations` again before starting the API.
+
+## Running on Azure ML
+
+```bash
+.venv/bin/python pipeline/data_assets.py                                  # Q1
+export MLFLOW_TRACKING_URI=$(.venv/bin/python pipeline/workspace.py)       # log Q2 to Q4 runs to the workspace
+.venv/bin/python pipeline/run_pipeline.py --compute cpu-cluster --create_compute
+.venv/bin/python pipeline/run_pipeline.py --compute cpu-cluster --schedule  # weekly retraining schedule
+```
+
+The compute cluster scales down to zero nodes when it is idle.
+
+Deployment and the Streamlit app (endpoint names must be unique within the Azure region):
+
+```bash
+.venv/bin/python deployment/deploy.py create    --endpoint <name> --version 1
+.venv/bin/python deployment/deploy.py add-green --endpoint <name> --version 2 --traffic 30
+.venv/bin/python deployment/deploy.py test      --endpoint <name>
+.venv/bin/python deployment/deploy.py secrets   --endpoint <name>   # saves the URI and key for Streamlit
+.venv/bin/streamlit run frontend/streamlit_app.py
+.venv/bin/python deployment/deploy.py delete    --endpoint <name>
+```
+
+Online endpoints are billed for as long as they exist, so delete the endpoint when you are done with it.
+
+## Results
+
+On the 667-row test set, the baseline random forest (model version 1) scored F1 0.698, precision 0.800 and recall 0.619. The tuned model (version 2) scored F1 0.660, precision 0.650 and recall 0.670. Its cross-validated F1 was slightly higher (0.751 against 0.740), and the gap in both directions is within the fold-to-fold variation. Tuning mainly traded precision for recall.
