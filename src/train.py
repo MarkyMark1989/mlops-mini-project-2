@@ -27,7 +27,7 @@ from sklearn.preprocessing import FunctionTransformer
 
 import features
 from features import FEATURE_SETS, RAW_FEATURES, TARGET, add_features, model_features
-from register import register_run_model
+from register import production_version, register_run_model
 from tracking import start_run
 
 SEARCH_SPACE = {
@@ -64,6 +64,24 @@ def log_confusion_matrix(y_true, y_pred):
     fig.tight_layout()
     mlflow.log_figure(fig, "confusion_matrix_test.png")
     plt.close(fig)
+
+
+def beats_production(model_name, candidate_f1, X_raw, y):
+    """Score the production model on this run's test set and compare F1.
+
+    Both models are judged on the same rows, so a new data version cannot make
+    the candidate look better or worse than it is. A tie keeps the production model.
+    """
+    current = production_version(model_name)
+    if current is None:
+        print(f"No production version of {model_name} yet")
+        return True
+    production = mlflow.pyfunc.load_model(f"models:/{model_name}/{current.version}")
+    production_f1 = f1_score(y, production.predict(X_raw))
+    mlflow.log_metric("production_test_f1", production_f1)
+    mlflow.set_tag("production_version", current.version)
+    print(f"Candidate test F1 {candidate_f1:.4f}, production (version {current.version}) {production_f1:.4f}")
+    return candidate_f1 > production_f1
 
 
 def train_model(data_dir, model_output, n_estimators=100, max_depth=None,
@@ -133,9 +151,16 @@ def train_model(data_dir, model_output, n_estimators=100, max_depth=None,
                 input_example=raw_example.head(3),
             )
             mlflow.log_artifacts(model_dir, artifact_path="model")
-        # Set by the pipeline; standalone runs register via register.py instead.
+        # Set by the pipeline, which only registers a model that beats production.
+        # Standalone runs register via register.py instead.
         if registered_model_name:
-            register_run_model(run.info.run_id, registered_model_name)
+            if beats_production(registered_model_name, test_metrics["test_f1"], raw_example, y_test):
+                version = register_run_model(run.info.run_id, registered_model_name)
+                decision = f"registered as version {version.version}"
+            else:
+                decision = "skipped: not better than production"
+            mlflow.set_tag("registration", decision)
+            print("Registration:", decision)
 
         model_output = Path(model_output)
         model_output.mkdir(parents=True, exist_ok=True)

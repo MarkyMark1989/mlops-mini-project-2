@@ -12,16 +12,21 @@ from tracking import start_run
 
 
 def read_csv(path):
-    """Read a CSV given either a file path or a folder (Azure ML uri_folder input)."""
+    """Read a CSV given a file path, or the newest CSV in a folder.
+
+    The pipeline reads the landing folder, where each data version is stored as
+    telecom-churn-v0001.csv, telecom-churn-v0002.csv and so on, so the last name
+    in sort order is the newest data. Returns (dataframe, file name).
+    """
     path = Path(path)
     if path.is_dir():
-        path = sorted(path.glob("*.csv"))[0]
-    return pd.read_csv(path)
+        path = sorted(path.glob("*.csv"))[-1]
+    return pd.read_csv(path), path.name
 
 
 def prepare_data(input_data, output_dir, test_size=0.2, random_state=42):
     with start_run("data-prep", job="data_prep"):
-        raw = read_csv(input_data)
+        raw, input_file = read_csv(input_data)
         df, steps = clean(raw)
 
         # Stratify so both splits keep the ~14% churn rate.
@@ -37,8 +42,9 @@ def prepare_data(input_data, output_dir, test_size=0.2, random_state=42):
         test = test.fillna(medians)
         steps.append(f"median_imputation: filled {n_missing} missing feature values using train medians")
 
-        train = pd.concat([add_features(train), train[TARGET]], axis=1)
-        test = pd.concat([add_features(test), test[TARGET]], axis=1)
+        columns = RAW_FEATURES + DERIVED_FEATURES
+        train = pd.concat([add_features(train, columns), train[TARGET]], axis=1)
+        test = pd.concat([add_features(test, columns), test[TARGET]], axis=1)
         steps.append(f"feature_engineering: added {', '.join(DERIVED_FEATURES)}")
 
         output_dir = Path(output_dir)
@@ -47,6 +53,7 @@ def prepare_data(input_data, output_dir, test_size=0.2, random_state=42):
         test.to_csv(output_dir / "test.csv", index=False)
 
         mlflow.log_params({
+            "input_file": input_file,
             "preprocessing": "schema_validation,range_checks,drop_duplicates,"
                              "drop_missing_target,stratified_split,median_imputation",
             "derived_features": ",".join(DERIVED_FEATURES),

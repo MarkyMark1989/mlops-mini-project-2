@@ -13,10 +13,10 @@ Code for MLOps Mini Project 2. The project predicts whether a telecom customer w
 | `src/features.py` | Column definitions, cleaning, the derived features and the `baseline`/`improved` feature sets | 2a, 4 |
 | `src/data_prep.py` | Data preparation job | 2a |
 | `src/train.py` | Training and evaluation job, with a `--feature_set` option and optional randomized search | 2b, 4 |
-| `src/register.py` | Finds the latest training run and registers its model | 3 |
+| `src/register.py` | Finds the latest training run and registers its model; `--promote` marks the production version | 3, 5 |
 | `src/tracking.py` | MLflow run handling for local runs and Azure ML jobs | 2 |
 | `src/components.py` | Pipeline components (mldesigner `@command_component`) | 5 |
-| `pipeline/data_assets.py` | Creates data asset versions 1 and 2 and counts their rows | 1 |
+| `pipeline/data_assets.py` | Creates data asset versions 1 and 2, counts their rows and copies them to the pipeline's landing folder | 1, 5 |
 | `pipeline/run_jobs.py` | Runs the data preparation and training jobs in Azure ML on the data asset | 2 |
 | `pipeline/run_pipeline.py`, `pipeline/conda.yaml` | Builds, runs and schedules the pipeline in a reusable environment | 5 |
 | `pipeline/workspace.py` | Workspace connection; prints the MLflow tracking URI | 1 to 5 |
@@ -59,7 +59,7 @@ Version 2 was tuned with plain 5-fold CV. The search now uses 5-fold CV repeated
 ## Running on Azure ML
 
 ```bash
-.venv/bin/python pipeline/data_assets.py                                  # Q1
+.venv/bin/python pipeline/data_assets.py                                  # Q1, also fills the landing folder
 .venv/bin/python pipeline/run_jobs.py --compute cpu-cluster               # Q2 as Azure ML jobs on the data asset
 export MLFLOW_TRACKING_URI=$(.venv/bin/python pipeline/workspace.py)       # log local runs (register.py, tuning) to the workspace
 .venv/bin/python pipeline/run_pipeline.py --compute cpu-cluster --create_compute   # --feature_set defaults to improved
@@ -67,6 +67,8 @@ export MLFLOW_TRACKING_URI=$(.venv/bin/python pipeline/workspace.py)       # log
 ```
 
 The compute cluster scales down to zero nodes when it is idle.
+
+The pipeline reads the newest file in the datastore folder `telecom-churn/landing/`, so scheduled runs pick up new data versions. Its training step registers a model only if it beats the production version on the same test set. Mark a version as production with `src/register.py --promote <version>` (with `MLFLOW_TRACKING_URI` set as above).
 
 Deployment and the Streamlit app (endpoint names must be unique within the Azure region):
 

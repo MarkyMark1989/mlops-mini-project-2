@@ -1,4 +1,9 @@
-"""Find the latest training run by experiment name/id and register its model."""
+"""Find the latest training run by experiment name/id and register its model.
+
+Also tracks which registered version is in production (tag stage=production):
+
+    python src/register.py --promote 5    # mark version 5 as the production model
+"""
 import argparse
 
 from mlflow.exceptions import MlflowException
@@ -7,6 +12,7 @@ from mlflow.tracking import MlflowClient
 from tracking import EXPERIMENT_NAME
 
 MODEL_NAME = "telecom-churn-rf"
+STAGE_TAG = "stage"
 
 
 def register_run_model(run_id, model_name=MODEL_NAME):
@@ -23,6 +29,25 @@ def register_run_model(run_id, model_name=MODEL_NAME):
     # Azure rejects runs:/ sources and wants the run's own artifact location.
     source = f"{client.get_run(run_id).info.artifact_uri}/model"
     return client.create_model_version(model_name, source=source, run_id=run_id)
+
+
+def production_version(model_name=MODEL_NAME):
+    """The registered version tagged stage=production, or None."""
+    client = MlflowClient()
+    # Check tags in Python rather than in the search filter, as with run status below.
+    versions = [v for v in client.search_model_versions(f"name='{model_name}'")
+                if v.tags.get(STAGE_TAG) == "production"]
+    return max(versions, key=lambda v: int(v.version)) if versions else None
+
+
+def promote(version, model_name=MODEL_NAME):
+    """Tag one version as production and clear the tag from any other."""
+    client = MlflowClient()
+    for v in client.search_model_versions(f"name='{model_name}'"):
+        if v.tags.get(STAGE_TAG) == "production" and v.version != str(version):
+            client.delete_model_version_tag(model_name, v.version, STAGE_TAG)
+    client.set_model_version_tag(model_name, str(version), STAGE_TAG, "production")
+    print(f"{model_name} version {version} is now the production model")
 
 
 def register_latest_model(experiment_name=EXPERIMENT_NAME, model_name=MODEL_NAME, dry_run=False):
@@ -61,5 +86,9 @@ if __name__ == "__main__":
     parser.add_argument("--experiment_name", default=EXPERIMENT_NAME)
     parser.add_argument("--model_name", default=MODEL_NAME)
     parser.add_argument("--dry_run", action="store_true", help="find the run but don't register it")
+    parser.add_argument("--promote", metavar="VERSION", help="mark a registered version as production instead")
     args = parser.parse_args()
-    register_latest_model(args.experiment_name, args.model_name, args.dry_run)
+    if args.promote:
+        promote(args.promote, args.model_name)
+    else:
+        register_latest_model(args.experiment_name, args.model_name, args.dry_run)

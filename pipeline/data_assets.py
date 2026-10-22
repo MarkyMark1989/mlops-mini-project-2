@@ -1,4 +1,8 @@
-"""Create the telecom-churn data asset (v1 and v2) and show the row count of each version."""
+"""Create the telecom-churn data asset (v1 and v2) and show the row count of each version.
+
+Each version is also copied into a landing folder on the workspace datastore,
+which the pipeline reads, so a scheduled run always trains on the newest data.
+"""
 import tempfile
 from pathlib import Path
 
@@ -7,11 +11,15 @@ from azure.ai.ml._artifacts._artifact_utilities import download_artifact_from_am
 from azure.ai.ml.constants import AssetTypes
 from azure.ai.ml.entities import Data
 from azure.core.exceptions import ResourceNotFoundError
+from azure.storage.blob import BlobServiceClient
 
 from workspace import ROOT, get_ml_client
 
 DATA_ASSET = "telecom-churn"
 VERSIONS = {"1": "telecom_churn_v1.csv", "2": "telecom_churn_v2.csv"}
+DATASTORE = "workspaceblobstore"
+LANDING_FOLDER = f"{DATA_ASSET}/landing"
+LANDING_URI = f"azureml://datastores/{DATASTORE}/paths/{LANDING_FOLDER}/"
 
 
 def create_versions(ml_client):
@@ -28,6 +36,19 @@ def create_versions(ml_client):
                 description=f"Telecom customer churn data ({filename})",
             ))
             print(f"Created {DATA_ASSET}:{version} from {filename}")
+        land_file(ml_client, version, filename)
+
+
+def land_file(ml_client, version, filename):
+    """Copy a data version into the landing folder, named so newer versions sort last."""
+    store = ml_client.datastores.get(DATASTORE, include_secrets=True)
+    # The workspace may return either an account key or a SAS token for its datastore.
+    secret = getattr(store.credentials, "account_key", None) or store.credentials.sas_token
+    service = BlobServiceClient(f"https://{store.account_name}.blob.{store.endpoint}", credential=secret)
+    name = f"{LANDING_FOLDER}/{DATA_ASSET}-v{int(version):04d}.csv"
+    with open(ROOT / filename, "rb") as f:
+        service.get_blob_client(store.container_name, name).upload_blob(f, overwrite=True)
+    print(f"Copied {filename} to {DATASTORE}/{name}")
 
 
 def show_row_counts(ml_client):

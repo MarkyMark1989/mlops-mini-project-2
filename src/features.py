@@ -60,10 +60,12 @@ def model_features(feature_set):
 
 
 def add_features(df, columns=None):
-    """Return raw + derived features for raw input rows.
+    """Return model input columns (raw + derived features) for raw input rows.
 
-    With `columns`, return only those columns. The serving model passes its own
-    column list, because a forest fitted with feature names rejects extra columns.
+    `columns` picks the columns to return. The serving model passes its own list,
+    because a forest fitted with feature names rejects extra columns. Without it
+    the baseline columns are returned, which is what models saved before feature
+    sets existed (versions 1 to 4) expect.
     """
     out = df[RAW_FEATURES].astype(float)
     # Average length of a daytime call; customers with no day calls get 0.
@@ -72,4 +74,4 @@ def add_features(df, columns=None):
     # The bill is about 0.48 + 0.17*DayMins + 10*DataUsage + 1.7*OverageFee, so
     # removing the $10/GB data part leaves the voice part of the monthly charge.
     out["VoiceCharge"] = out["MonthlyCharge"] - 10 * out["DataUsage"]
-    return out if columns is None else out[list(columns)]
+    return out[list(columns or model_features("baseline"))]

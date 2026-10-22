@@ -19,12 +19,12 @@ CODE = Path(__file__).parent
 @command_component(
     name="telecom_churn_data_prep",
     display_name="Data preparation",
-    description="Clean the churn data, add derived features and split train/test.",
+    description="Read the newest data file, clean it, add derived features and split train/test.",
     environment=ENVIRONMENT,
     code=CODE,
 )
 def data_prep_component(
-    input_data: Input(type="uri_file"),
+    input_data: Input(type="uri_folder"),  # the landing folder; the newest file is used
     prepared_data: Output(type="uri_folder"),
     test_size: float = 0.2,
     random_state: int = 42,
@@ -35,7 +35,7 @@ def data_prep_component(
 @command_component(
     name="telecom_churn_train",
     display_name="Model training and evaluation",
-    description="Train (optionally tune) a random forest, evaluate on the test set and register it.",
+    description="Train (optionally tune) a random forest, evaluate it, and register it if it beats production.",
     # Registering a model is a side effect, so never reuse a cached run of this step.
     is_deterministic=False,
     environment=ENVIRONMENT,
