@@ -13,8 +13,14 @@ RAW_FEATURES = [
     "AccountWeeks", "ContractRenewal", "DataPlan", "DataUsage", "CustServCalls",
     "DayMins", "DayCalls", "MonthlyCharge", "OverageFee", "RoamMins",
 ]
-DERIVED_FEATURES = ["AvgCallMins", "HighServiceCalls"]
-MODEL_FEATURES = RAW_FEATURES + DERIVED_FEATURES
+DERIVED_FEATURES = ["AvgCallMins", "HighServiceCalls", "VoiceCharge"]
+# Derived features each model uses on top of the raw columns. "baseline" is the
+# original feature set (model v1 to v4); "improved" came out of
+# analysis/feature_selection.py, where only VoiceCharge helped.
+FEATURE_SETS = {
+    "baseline": ["AvgCallMins", "HighServiceCalls"],
+    "improved": ["VoiceCharge"],
+}
 
 # Churn rate is ~11% for 0-3 customer service calls and ~52% for 4 or more.
 HIGH_SERVICE_CALLS_THRESHOLD = 4
@@ -48,10 +54,22 @@ def clean(df):
     return df.reset_index(drop=True), steps
 
 
-def add_features(df):
-    """Return the model feature matrix (raw + derived features) for raw input rows."""
+def model_features(feature_set):
+    """Columns a model trained on the given feature set expects, in order."""
+    return RAW_FEATURES + FEATURE_SETS[feature_set]
+
+
+def add_features(df, columns=None):
+    """Return raw + derived features for raw input rows.
+
+    With `columns`, return only those columns. The serving model passes its own
+    column list, because a forest fitted with feature names rejects extra columns.
+    """
     out = df[RAW_FEATURES].astype(float)
     # Average length of a daytime call; customers with no day calls get 0.
     out["AvgCallMins"] = (out["DayMins"] / out["DayCalls"].replace(0, np.nan)).fillna(0.0)
     out["HighServiceCalls"] = (out["CustServCalls"] >= HIGH_SERVICE_CALLS_THRESHOLD).astype(int)
-    return out
+    # The bill is about 0.48 + 0.17*DayMins + 10*DataUsage + 1.7*OverageFee, so
+    # removing the $10/GB data part leaves the voice part of the monthly charge.
+    out["VoiceCharge"] = out["MonthlyCharge"] - 10 * out["DataUsage"]
+    return out if columns is None else out[list(columns)]

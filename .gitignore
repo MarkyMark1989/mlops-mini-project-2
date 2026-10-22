@@ -17,3 +17,4 @@ MLOPS_mini_prj2.docx
 ~$*
 *-backup.db
 mlruns-*-backup/
+report/build/node_modules/

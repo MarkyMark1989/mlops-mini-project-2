@@ -52,6 +52,8 @@ def train_component(
     tune_iterations: int = 0,
     random_state: int = 42,
     registered_model_name: str = "telecom-churn-rf",
+    feature_set: str = "baseline",  # a key of features.FEATURE_SETS
+    cv_seed: int = 0,
 ):
     train_model(
         prepared_data,
@@ -64,4 +66,6 @@ def train_component(
         tune_iterations=tune_iterations,
         random_state=random_state,
         registered_model_name=registered_model_name or None,
+        feature_set=feature_set,
+        cv_seed=cv_seed,
     )

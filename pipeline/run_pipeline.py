@@ -28,12 +28,13 @@ SCHEDULE_NAME = "telecom-churn-weekly-retrain"
     name="telecom_churn_pipeline",
     description="Data prep -> tuned random forest training/evaluation -> model registration",
 )
-def churn_pipeline(input_data, test_size=0.2, tune_iterations=30):
+def churn_pipeline(input_data, test_size=0.2, tune_iterations=30, feature_set="improved"):
     prep = data_prep_component(input_data=input_data, test_size=test_size)
     train = train_component(
         prepared_data=prep.outputs.prepared_data,
         tune_iterations=tune_iterations,
         registered_model_name=MODEL_NAME,
+        feature_set=feature_set,
     )
     return {"prepared_data": prep.outputs.prepared_data, "model": train.outputs.model_output}
 
@@ -72,6 +73,7 @@ def main():
     parser.add_argument("--data_version", default="latest",
                         help="data asset version; 'latest' is resolved at submission time")
     parser.add_argument("--tune_iterations", type=int, default=30)
+    parser.add_argument("--feature_set", choices=["baseline", "improved"], default="improved")
     parser.add_argument("--schedule", action="store_true",
                         help="create a weekly (Monday 06:00 UTC) retraining schedule instead of a one-off run")
     parser.add_argument("--dry_run", action="store_true")
@@ -89,6 +91,7 @@ def main():
     job = churn_pipeline(
         input_data=Input(type="uri_file", path=f"azureml:{DATA_ASSET}:{data_version}"),
         tune_iterations=args.tune_iterations,
+        feature_set=args.feature_set,
     )
     job.settings.default_compute = args.compute
 
