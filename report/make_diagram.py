@@ -18,9 +18,9 @@ PROD = "#fdf0d5"    # shared production steps
 DECISION = "#ffffff"
 EDGE = "#3b4a5a"
 
-fig, ax = plt.subplots(figsize=(11, 13))
+fig, ax = plt.subplots(figsize=(11, 14.5))
 ax.set_xlim(-3, 110)
-ax.set_ylim(0, 130)
+ax.set_ylim(-16, 130)
 ax.axis("off")
 
 
@@ -68,10 +68,10 @@ arrow(38, 65.5, 38, 60.5)
 
 # Application team lane
 box(87, 116, 34, 7, "Agree on the API contract\n(OpenAPI / Swagger spec)", APP)
-box(87, 101, 34, 7, "Build the dashboard against\nthe mock Flask API", APP)
+box(87, 101, 34, 9, "Build the agent screen\nand the dashboard against\nthe mock Flask API", APP)
 box(87, 86, 34, 7, "Integration and contract\ntests against staging", APP)
-arrow(87, 112.5, 87, 104.5)
-arrow(87, 97.5, 87, 89.5)
+arrow(87, 112.5, 87, 105.5)
+arrow(87, 96.5, 87, 89.5)
 arrow(51, 58, 70, 84, "staging ready", (6, -4))
 
 # Shared production flow
@@ -80,7 +80,11 @@ arrow(87, 82.5, 76, 44.5, "release", (5, 0))
 diamond(55, 28, 30, 10, "Live metrics OK?")
 box(34, 16, 28, 5, "Shift 100% of traffic to green", PROD)
 box(82, 16, 26, 5, "Roll back: green to 0%", PROD)
-box(58, 5, 70, 5, "Dashboard backend calls the endpoint, plus nightly batch scoring", PROD)
+box(58, 5, 70, 5, "Production endpoint serves the applications", PROD)
+box(33, -8.5, 50, 9, "Contact center: an incoming call looks up\nthe 10 fields by customer ID and shows the\nrisk and a suggested offer to the agent", APP)
+box(86, -8.5, 30, 9, "Dashboard: nightly\nbatch scoring", APP)
+arrow(40, 2.5, 36, -3.5)
+arrow(76, 2.5, 82, -3.5)
 arrow(55, 37.5, 55, 33)
 arrow(43, 26, 37, 18.5, "yes", (-3, 1))
 arrow(68, 26, 78, 18.5, "no", (3, 1))
@@ -96,7 +100,7 @@ arrow(1, 116, 11, 116)
 ax.text(-0.5, 79, "drift or decay triggers retraining", rotation=90, fontsize=9.5,
         color=EDGE, ha="center", va="center", style="italic")
 
-ax.set_title("End-to-end process: churn model in a customer analytics dashboard",
+ax.set_title("End-to-end process: churn model in the contact center and dashboard",
              fontsize=14, weight="bold", pad=6)
 OUT.parent.mkdir(exist_ok=True)
 fig.savefig(OUT, dpi=160, bbox_inches="tight", facecolor="white")
