@@ -47,8 +47,8 @@ def arrow(x1, y1, x2, y2, label=None, label_pos=(0, 0)):
 # Lane titles and backgrounds
 ax.add_patch(FancyBboxPatch((2, 50), 58, 76, boxstyle="round,pad=0.4", fc="#f5f9fd", ec="#b9cde3", lw=1))
 ax.add_patch(FancyBboxPatch((66, 50), 42, 76, boxstyle="round,pad=0.4", fc="#f6fbf4", ec="#c3dcbc", lw=1))
-ax.text(31, 124, "ML engineering", ha="center", fontsize=13, weight="bold", color="#2a5b8c")
-ax.text(87, 124, "Application team", ha="center", fontsize=13, weight="bold", color="#3d7a32")
+ax.text(31, 124, "ML engineering", ha="center", fontsize=13, weight="bold", color="black")
+ax.text(87, 124, "Application team", ha="center", fontsize=13, weight="bold", color="black")
 
 # ML engineering lane
 box(31, 116, 40, 5, "New customer data arrives", ML)

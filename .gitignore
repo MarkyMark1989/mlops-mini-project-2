@@ -1,0 +1,19 @@
+.venv/
+__pycache__/
+.DS_Store
+
+# Local MLflow tracking and training outputs
+mlflow.db
+mlruns/
+mlartifacts/
+outputs/
+
+# Azure ML workspace config (contains subscription id) and endpoint key for Streamlit
+config.json
+.streamlit/secrets.toml
+
+# Course assignment document and Office lock files
+MLOPS_mini_prj2.docx
+~$*
+*-backup.db
+mlruns-*-backup/

@@ -15,6 +15,7 @@ Code for MLOps Mini Project 2. The project predicts whether a telecom customer w
 | `src/tracking.py` | MLflow run handling for local runs and Azure ML jobs | 2 |
 | `src/components.py` | Pipeline components (mldesigner `@command_component`) | 5 |
 | `pipeline/data_assets.py` | Creates data asset versions 1 and 2 and counts their rows | 1 |
+| `pipeline/run_jobs.py` | Runs the data preparation and training jobs in Azure ML on the data asset | 2 |
 | `pipeline/run_pipeline.py`, `pipeline/conda.yaml` | Builds, runs and schedules the pipeline in a reusable environment | 5 |
 | `pipeline/workspace.py` | Workspace connection; prints the MLflow tracking URI | 1 to 5 |
 | `api/app.py` | Flask API with Swagger UI | 6 |
@@ -41,8 +42,9 @@ Run these from the project root. MLflow stores runs in `./mlflow.db`.
 .venv/bin/python analysis/eda.py
 .venv/bin/python src/data_prep.py --input_data telecom_churn_v2.csv
 .venv/bin/python src/train.py                         # baseline model
+.venv/bin/python src/register.py                      # registers it as telecom-churn-rf version 1
 .venv/bin/python src/train.py --tune_iterations 30    # tuned model
-.venv/bin/python src/register.py                      # register the latest training run
+.venv/bin/python src/register.py                      # registers it as version 2
 .venv/bin/python api/app.py                           # Swagger UI at http://127.0.0.1:5001/apidocs/
 ```
 
@@ -52,7 +54,8 @@ The Flask API serves `outputs/model/model.pkl`, which is the model from whicheve
 
 ```bash
 .venv/bin/python pipeline/data_assets.py                                  # Q1
-export MLFLOW_TRACKING_URI=$(.venv/bin/python pipeline/workspace.py)       # log Q2 to Q4 runs to the workspace
+.venv/bin/python pipeline/run_jobs.py --compute cpu-cluster               # Q2 as Azure ML jobs on the data asset
+export MLFLOW_TRACKING_URI=$(.venv/bin/python pipeline/workspace.py)       # log local runs (register.py, tuning) to the workspace
 .venv/bin/python pipeline/run_pipeline.py --compute cpu-cluster --create_compute
 .venv/bin/python pipeline/run_pipeline.py --compute cpu-cluster --schedule  # weekly retraining schedule
 ```
