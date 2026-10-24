@@ -4,7 +4,7 @@ from contextlib import contextmanager
 
 import mlflow
 
-EXPERIMENT_NAME = "telecom-churn"
+EXPERIMENT_NAME = "churn-final"
 
 
 def in_azureml_job():

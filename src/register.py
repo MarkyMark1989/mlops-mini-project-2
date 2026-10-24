@@ -2,7 +2,7 @@
 
 Also tracks which registered version is in production (tag stage=production):
 
-    python src/register.py --promote 5    # mark version 5 as the production model
+    python src/register.py --promote 2    # mark version 2 as the production model
 """
 import argparse
 
@@ -11,7 +11,7 @@ from mlflow.tracking import MlflowClient
 
 from tracking import EXPERIMENT_NAME
 
-MODEL_NAME = "telecom-churn-rf"
+MODEL_NAME = "churn-rf"
 STAGE_TAG = "stage"
 
 

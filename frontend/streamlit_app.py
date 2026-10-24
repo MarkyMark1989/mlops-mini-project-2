@@ -51,7 +51,8 @@ def call_endpoint(scoring_uri, key, deployment, values):
     # Custom scoring scripts may return their result as a JSON string.
     if isinstance(result, str):
         result = json.loads(result)
-    return body, result
+    # The endpoint names the deployment that answered, which shows the traffic split at work.
+    return body, result, response.headers.get("azureml-model-deployment")
 
 
 def parse_result(result):
@@ -97,7 +98,7 @@ with st.form("customer"):
 if submitted:
     try:
         with st.spinner("Calling the Azure ML endpoint..."):
-            request_body, result = call_endpoint(scoring_uri, key, deployment, values)
+            request_body, result, served_by = call_endpoint(scoring_uri, key, deployment, values)
         prediction, probability = parse_result(result)
     except requests.HTTPError as e:
         st.error(f"The endpoint returned {e.response.status_code}: {e.response.text[:500]}")
@@ -110,5 +111,7 @@ if submitted:
             st.success("Prediction: this customer is **likely to stay**.")
         if probability is not None:
             st.metric("Churn probability", f"{probability:.0%}")
+        if served_by:
+            st.caption(f"Answered by deployment: {served_by}")
         with st.expander("Request and response"):
             st.json({"request": request_body, "response": result})

@@ -8,6 +8,7 @@ from pathlib import Path
 from mldesigner import Input, Output, command_component
 
 from data_prep import prepare_data
+from register import MODEL_NAME
 from train import parse_max_features, train_model
 
 ENVIRONMENT_NAME = "telecom-churn-env"
@@ -51,8 +52,8 @@ def train_component(
     class_weight: str = "none",
     tune_iterations: int = 0,
     random_state: int = 42,
-    registered_model_name: str = "telecom-churn-rf",
-    feature_set: str = "baseline",  # a key of features.FEATURE_SETS
+    registered_model_name: str = MODEL_NAME,
+    feature_set: str = "improved",  # a key of features.FEATURE_SETS
     cv_seed: int = 0,
 ):
     train_model(

@@ -1,4 +1,7 @@
-"""Nested-CV check: does VoiceCharge plus a fresh hyperparameter search beat the baseline (model v1)?
+"""Nested-CV check: does the hyperparameter search (model v2) beat the default forest (model v1)?
+
+Both use the raw columns plus VoiceCharge. The original derived pair (AvgCallMins,
+HighServiceCalls) and the raw columns alone are included for comparison.
 
 The search runs inside each outer training fold and is scored on that fold's held-out
 part, so the tuned result is not flattered. The test split is used once at the end.
@@ -22,12 +25,8 @@ from train import SEARCH_SPACE  # noqa: E402
 
 train = pd.read_csv(ROOT / "outputs/prepared/train.csv")
 test = pd.read_csv(ROOT / "outputs/prepared/test.csv")
-for d in (train, test):
-    d["VoiceCharge"] = d["MonthlyCharge"] - 10 * d["DataUsage"]
-
-CURRENT = RAW_FEATURES + ["AvgCallMins", "HighServiceCalls"]
+ORIGINAL = RAW_FEATURES + ["AvgCallMins", "HighServiceCalls"]
 NEW = RAW_FEATURES + ["VoiceCharge"]
-OLD_TUNED = dict(n_estimators=100, max_depth=20, max_features="log2", min_samples_leaf=1, class_weight="balanced")
 
 outer = RepeatedStratifiedKFold(n_splits=5, n_repeats=2, random_state=1)
 rows = []
@@ -40,10 +39,10 @@ for k, (tr, va) in enumerate(outer.split(X, y)):
         cv=StratifiedKFold(n_splits=3, shuffle=True, random_state=k), random_state=k)
     search.fit(Xtr[NEW], ytr)
     rows.append({
-        "v1 baseline (current features, default)": f1(RandomForestClassifier(random_state=42, n_jobs=-1), CURRENT),
-        "v2 tuned (current features, old settings)": f1(RandomForestClassifier(random_state=42, n_jobs=-1, **OLD_TUNED), CURRENT),
-        "VoiceCharge, default settings": f1(RandomForestClassifier(random_state=42, n_jobs=-1), NEW),
-        "VoiceCharge + fresh search (nested)": f1_score(yva, search.predict(Xva[NEW])),
+        "v1: VoiceCharge, default settings": f1(RandomForestClassifier(random_state=42, n_jobs=-1), NEW),
+        "v2: VoiceCharge + search (nested)": f1_score(yva, search.predict(Xva[NEW])),
+        "Raw columns only, default": f1(RandomForestClassifier(random_state=42, n_jobs=-1), RAW_FEATURES),
+        "Original pair, default": f1(RandomForestClassifier(random_state=42, n_jobs=-1), ORIGINAL),
         "chosen": search.best_params_,
     })
     print(f"outer fold {k + 1}/10 done", flush=True)
@@ -65,9 +64,9 @@ final = RandomizedSearchCV(
 final.fit(train[NEW], train[TARGET])
 print(f"\nFinal search on full training split: best CV F1 {final.best_score_:.3f}, params {final.best_params_}")
 for name, model, cols in [
-    ("v1 baseline", RandomForestClassifier(random_state=42, n_jobs=-1), CURRENT),
-    ("v2 tuned (old)", RandomForestClassifier(random_state=42, n_jobs=-1, **OLD_TUNED), CURRENT),
-    ("VoiceCharge + fresh search", final.best_estimator_, NEW),
+    ("v1: VoiceCharge, default", RandomForestClassifier(random_state=42, n_jobs=-1), NEW),
+    ("v2: VoiceCharge + search", final.best_estimator_, NEW),
+    ("Original pair, default", RandomForestClassifier(random_state=42, n_jobs=-1), ORIGINAL),
 ]:
-    p = model.fit(train[cols], train[TARGET]).predict(test[cols]) if name != "VoiceCharge + fresh search" else model.predict(test[cols])
+    p = model.predict(test[cols]) if model is final.best_estimator_ else model.fit(train[cols], train[TARGET]).predict(test[cols])
     print(f"  test  {name:28s} F1 {f1_score(test[TARGET], p):.3f}  precision {precision_score(test[TARGET], p):.3f}  recall {recall_score(test[TARGET], p):.3f}")

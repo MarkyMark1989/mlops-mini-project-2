@@ -14,9 +14,9 @@ RAW_FEATURES = [
     "DayMins", "DayCalls", "MonthlyCharge", "OverageFee", "RoamMins",
 ]
 DERIVED_FEATURES = ["AvgCallMins", "HighServiceCalls", "VoiceCharge"]
-# Derived features each model uses on top of the raw columns. "baseline" is the
-# original feature set (model v1 to v4); "improved" came out of
-# analysis/feature_selection.py, where only VoiceCharge helped.
+# Derived features each model uses on top of the raw columns. "improved" is the
+# default; it came out of analysis/feature_selection.py, where only VoiceCharge
+# helped. "baseline" is the original pair, which did not improve on raw columns.
 FEATURE_SETS = {
     "baseline": ["AvgCallMins", "HighServiceCalls"],
     "improved": ["VoiceCharge"],
@@ -65,7 +65,7 @@ def add_features(df, columns=None):
     `columns` picks the columns to return. The serving model passes its own list,
     because a forest fitted with feature names rejects extra columns. Without it
     the baseline columns are returned, which is what models saved before feature
-    sets existed (versions 1 to 4) expect.
+    sets existed expect.
     """
     out = df[RAW_FEATURES].astype(float)
     # Average length of a daytime call; customers with no day calls get 0.

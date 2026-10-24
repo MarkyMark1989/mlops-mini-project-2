@@ -9,15 +9,16 @@ Code for MLOps Mini Project 2. The project predicts whether a telecom customer w
 | `telecom_churn_v1.csv`, `telecom_churn_v2.csv`, `DataDictionary-1.xlsx` | Data and column descriptions | |
 | `analysis/eda.py` | Exploratory analysis; writes the charts in `analysis/figures/` | 2a |
 | `analysis/feature_selection.py` | Compares candidate derived features with repeated cross-validation | 2a, 4 |
-| `analysis/tuning_check.py` | Nested cross-validation check of the improved model and its search | 4 |
-| `src/features.py` | Column definitions, cleaning, the derived features and the `baseline`/`improved` feature sets | 2a, 4 |
+| `analysis/tuning_check.py` | Nested cross-validation of version 2 (tuned) against version 1 (default) | 4 |
+| `analysis/seed_check.py` | Reruns the question 4 search with five fold seeds and prints the settings each one picks | 4 |
+| `src/features.py` | Column definitions, cleaning, the derived features and the `improved` (default) and `baseline` feature sets | 2a, 4 |
 | `src/data_prep.py` | Data preparation job | 2a |
-| `src/train.py` | Training and evaluation job, with a `--feature_set` option and optional randomized search | 2b, 4 |
+| `src/train.py` | Training and evaluation job, optional randomized search, training-row fingerprints and the pipeline's production check | 2b, 4, 5 |
 | `src/register.py` | Finds the latest training run and registers its model; `--promote` marks the production version | 3, 5 |
 | `src/tracking.py` | MLflow run handling for local runs and Azure ML jobs | 2 |
 | `src/components.py` | Pipeline components (mldesigner `@command_component`) | 5 |
 | `pipeline/data_assets.py` | Creates data asset versions 1 and 2, counts their rows and copies them to the pipeline's landing folder | 1, 5 |
-| `pipeline/run_jobs.py` | Runs the data preparation and training jobs in Azure ML on the data asset | 2 |
+| `pipeline/run_jobs.py` | Runs the data preparation and (optionally tuned) training jobs in Azure ML on the data asset | 2, 4 |
 | `pipeline/run_pipeline.py`, `pipeline/conda.yaml` | Builds, runs and schedules the pipeline in a reusable environment | 5 |
 | `pipeline/workspace.py` | Workspace connection; prints the MLflow tracking URI | 1 to 5 |
 | `api/app.py` | Flask API with Swagger UI | 6 |
@@ -38,44 +39,45 @@ The Azure steps also need the Azure CLI with the `ml` extension (`az login`), an
 
 ## Running locally
 
-Run these from the project root. MLflow stores runs in `./mlflow.db`.
+Run these from the project root. MLflow stores local runs in `./mlflow.db`.
 
 ```bash
 .venv/bin/python analysis/eda.py
 .venv/bin/python src/data_prep.py --input_data telecom_churn_v2.csv
-.venv/bin/python src/train.py                         # baseline model
-.venv/bin/python src/register.py                      # registers it as telecom-churn-rf version 1
-.venv/bin/python src/train.py --tune_iterations 30    # tuned model
-.venv/bin/python src/register.py                      # registers it as version 2
-.venv/bin/python src/train.py --feature_set improved --tune_iterations 30   # improved model (VoiceCharge)
-.venv/bin/python src/register.py                      # registered on Azure as version 5
+.venv/bin/python src/train.py                         # default random forest on raw columns + VoiceCharge
+.venv/bin/python src/train.py --tune_iterations 30    # randomized search, 5-fold CV repeated 3 times
+.venv/bin/python analysis/feature_selection.py        # feature comparison
+.venv/bin/python analysis/tuning_check.py             # nested CV, version 2 against version 1
+.venv/bin/python analysis/seed_check.py               # search under fold seeds 0 to 4
 .venv/bin/python api/app.py                           # Swagger UI at http://127.0.0.1:5001/apidocs/
 ```
 
-The Flask API serves `outputs/model/model.pkl`, which is the model from whichever `train.py` run finished last. In the order above that is the improved model. To serve the baseline instead (as in the report), run `src/train.py` with no options again before starting the API.
-
-Version 2 was tuned with plain 5-fold CV. The search now uses 5-fold CV repeated three times, so the second `train.py` command no longer reproduces version 2 exactly.
+The Flask API serves `outputs/model/model.pkl`, the model from whichever `train.py` run finished last. In the order above that is the tuned model, which has the same settings as version 2 on Azure. Set `MODEL_PATH` to serve a different pickle.
 
 ## Running on Azure ML
 
 ```bash
-.venv/bin/python pipeline/data_assets.py                                  # Q1, also fills the landing folder
-.venv/bin/python pipeline/run_jobs.py --compute cpu-cluster               # Q2 as Azure ML jobs on the data asset
-export MLFLOW_TRACKING_URI=$(.venv/bin/python pipeline/workspace.py)       # log local runs (register.py, tuning) to the workspace
-.venv/bin/python pipeline/run_pipeline.py --compute cpu-cluster --create_compute   # --feature_set defaults to improved
+.venv/bin/python pipeline/data_assets.py                                  # Q1: data asset v1/v2, row counts, landing folder
+.venv/bin/python pipeline/run_jobs.py                                     # Q2: data prep + default forest in experiment churn-final
+export MLFLOW_TRACKING_URI=$(.venv/bin/python pipeline/workspace.py)       # point local scripts at the workspace
+.venv/bin/python src/register.py                                          # Q3: registers the latest run as churn-rf
+.venv/bin/python pipeline/run_jobs.py --prep_job <prep job> --tune_iterations 30   # Q4: tuned forest on the same split
+.venv/bin/python src/register.py                                          # registers it as the next churn-rf version
+.venv/bin/python src/register.py --promote 2                              # marks version 2 as production
+.venv/bin/python pipeline/run_pipeline.py --compute cpu-cluster           # Q5: one pipeline run
 .venv/bin/python pipeline/run_pipeline.py --compute cpu-cluster --schedule  # weekly retraining schedule
 ```
 
-The compute cluster scales down to zero nodes when it is idle.
+The compute cluster scales down to zero nodes when it is idle. Pass `--create_compute` to `run_pipeline.py` if the cluster does not exist yet.
 
-The pipeline reads the newest file in the datastore folder `telecom-churn/landing/`, so scheduled runs pick up new data versions. Its training step registers a model only if it beats the production version on the same test set. Mark a version as production with `src/register.py --promote <version>` (with `MLFLOW_TRACKING_URI` set as above).
+The pipeline reads the newest file in the datastore folder `telecom-churn/landing/`, so scheduled runs pick up new data versions. Its training step registers a model only if it beats the production version, scored only on test rows the production model never trained on (each saved model carries a fingerprint of its training rows).
 
 Deployment and the Streamlit app (endpoint names must be unique within the Azure region):
 
 ```bash
 .venv/bin/python deployment/deploy.py create    --endpoint <name> --version 1
-.venv/bin/python deployment/deploy.py add-green --endpoint <name> --version 5 --traffic 30
-.venv/bin/python deployment/deploy.py test      --endpoint <name>
+.venv/bin/python deployment/deploy.py add-green --endpoint <name> --version 2 --traffic 30
+.venv/bin/python deployment/deploy.py test      --endpoint <name> --deployment green
 .venv/bin/python deployment/deploy.py secrets   --endpoint <name>   # saves the URI and key for Streamlit
 .venv/bin/streamlit run frontend/streamlit_app.py
 .venv/bin/python deployment/deploy.py delete    --endpoint <name>
@@ -85,6 +87,11 @@ Online endpoints are billed for as long as they exist, so delete the endpoint wh
 
 ## Results
 
-On the 667-row test set, the baseline random forest (model version 1) scored F1 0.698, precision 0.800 and recall 0.619. The first tuned model (version 2) scored F1 0.660, precision 0.650 and recall 0.670. Nested cross-validation showed that its tuning did not help (0.744 against 0.747 for version 1).
+All runs are in the MLflow experiment `churn-final`, and both models are versions of the registered model `churn-rf`. Both use the ten raw columns plus VoiceCharge (MonthlyCharge minus 10 x DataUsage).
 
-The improved model (version 5) replaces the two original derived features with VoiceCharge (MonthlyCharge minus 10 × DataUsage) and was tuned with repeated cross-validation. It scored F1 0.713, precision 0.805 and recall 0.639 on the test set, and 0.776 in nested cross-validation, beating version 1 in 7 of 10 outer folds. The pipeline rebuilds the same model as version 6.
+| Version | Model | Test F1 / precision / recall |
+|---|---|---|
+| 1 | Default random forest | 0.705 / 0.785 / 0.639 |
+| 2 | Settings from the randomized search (production) | 0.713 / 0.805 / 0.639 |
+
+On the 667-row test set both catch the same 62 of 97 churners, and version 2 raises two fewer false alarms. In nested cross-validation version 2 scores 0.776 against 0.769 for version 1. Most of the gain over the original features comes from VoiceCharge, which adds 0.023 to cross-validated F1 over the raw columns.

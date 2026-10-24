@@ -1,10 +1,11 @@
 """Run the data preparation and training jobs on their own (Q2) as Azure ML command jobs.
 
 Both jobs read the registered telecom-churn data asset rather than a local file and
-log to the telecom-churn experiment. The training job does not register a model;
-src/register.py does that (Q3).
+log to the churn-final experiment. The training job does not register a model;
+src/register.py does that (Q3, Q4).
 
-    python pipeline/run_jobs.py --compute cpu-cluster
+    python pipeline/run_jobs.py                                    # Q2: data prep, then a default forest
+    python pipeline/run_jobs.py --prep_job NAME --tune_iterations 30  # Q4: tuned forest on the same split
 """
 import argparse
 import sys
@@ -17,6 +18,7 @@ from workspace import ROOT, get_ml_client
 
 sys.path.insert(0, str(ROOT / "src"))
 from components import ENVIRONMENT  # noqa: E402
+from features import FEATURE_SETS  # noqa: E402
 from tracking import EXPERIMENT_NAME  # noqa: E402
 
 SRC = str(ROOT / "src")
@@ -43,6 +45,10 @@ def main():
     parser.add_argument("--test_size", type=float, default=0.2)
     parser.add_argument("--prep_job", default=None,
                         help="name of a completed data-prep job to train from, instead of running prep again")
+    parser.add_argument("--feature_set", choices=sorted(FEATURE_SETS), default="improved")
+    parser.add_argument("--tune_iterations", type=int, default=0,
+                        help="randomized-search iterations; 0 trains a forest with default settings")
+    parser.add_argument("--cv_seed", type=int, default=0)
     args = parser.parse_args()
 
     ml_client = get_ml_client()
@@ -52,10 +58,12 @@ def main():
         prep = run_prep(ml_client, args)
 
     submit(ml_client, command(
-        display_name="train-evaluate",
+        display_name="train-evaluate" if args.tune_iterations == 0 else "train-evaluate-tuned",
         experiment_name=EXPERIMENT_NAME,
         code=SRC,
-        command="python train.py --data_dir ${{inputs.prepared_data}} --model_output ${{outputs.model_output}}",
+        command="python train.py --data_dir ${{inputs.prepared_data}} --model_output ${{outputs.model_output}} "
+                f"--feature_set {args.feature_set} --tune_iterations {args.tune_iterations} "
+                f"--cv_seed {args.cv_seed}",
         # Command jobs only accept datastore paths as inputs; this is where the
         # prep job's prepared_data output lands by default.
         inputs={"prepared_data": Input(

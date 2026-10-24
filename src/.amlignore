@@ -1,0 +1,4 @@
+# Kept out of the code snapshot Azure ML uploads for each job
+mlruns/
+__pycache__/
+.DS_Store

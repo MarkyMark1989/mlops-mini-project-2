@@ -2,11 +2,14 @@
 
 With --tune_iterations > 0 the forest is tuned with a randomized search
 (5-fold stratified CV repeated 3 times, optimizing F1) before evaluation on the
-test set. --feature_set picks the derived features (see features.FEATURE_SETS).
+test set. --feature_set picks the derived features (see features.FEATURE_SETS);
+"improved" (raw columns + VoiceCharge) is the default, "baseline" the original set.
 --cv_seed fixes the CV splits; with the default of 0 the improved search picks
 the same settings under 4 of 5 split seeds (seed 42 was the odd one out).
 """
 import argparse
+import hashlib
+import json
 import pickle
 import tempfile
 from pathlib import Path
@@ -16,6 +19,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import mlflow
+import numpy as np
 import pandas as pd
 from mlflow.models import infer_signature
 from sklearn.ensemble import RandomForestClassifier
@@ -37,6 +41,12 @@ SEARCH_SPACE = {
     "max_features": ["sqrt", "log2", 0.5],
     "class_weight": [None, "balanced", "balanced_subsample"],
 }
+# Saved inside every model folder: hashes of the rows the model was trained on.
+FINGERPRINT_FILE = "training_rows.json"
+# With fewer unseen test rows than this, a fair comparison is too noisy to use.
+MIN_FAIR_ROWS = 100
+# Azure's no-code MLflow deployment imports this package but doesn't install it.
+EXTRA_PIP_REQUIREMENTS = ["azureml-ai-monitoring==1.0.0"]
 
 
 def parse_max_features(value):
@@ -55,6 +65,17 @@ def build_serving_model(classifier, columns):
     ])
 
 
+def row_fingerprints(df):
+    """A short SHA-256 hash of each row's raw predictors and target.
+
+    Values are formatted the same way for every data version, so a customer who
+    appears in data v1 and v2 gets the same hash in both.
+    """
+    values = df[RAW_FEATURES + [TARGET]].astype(float).to_numpy()
+    return [hashlib.sha256(",".join(f"{v:.10g}" for v in row).encode()).hexdigest()[:16]
+            for row in values]
+
+
 def log_confusion_matrix(y_true, y_pred):
     fig, ax = plt.subplots(figsize=(5, 4))
     ConfusionMatrixDisplay.from_predictions(
@@ -66,28 +87,56 @@ def log_confusion_matrix(y_true, y_pred):
     plt.close(fig)
 
 
-def beats_production(model_name, candidate_f1, X_raw, y):
-    """Score the production model on this run's test set and compare F1.
+def beats_production(model_name, candidate, X_raw, y, test_fingerprints):
+    """Compare F1 with the production model on test rows it never trained on.
 
-    Both models are judged on the same rows, so a new data version cannot make
-    the candidate look better or worse than it is. A tie keeps the production model.
+    A new data version still contains the customers the production model was
+    trained on, and scoring it on those rows would inflate its F1. Each saved
+    model carries the fingerprints of its training rows, so both models are
+    scored only on the test rows missing from them. If the production model has
+    no fingerprints, or fewer than MIN_FAIR_ROWS test rows (or no churners) are
+    unseen, both are scored on the full test set instead. That favors the
+    production model, so a candidate that still wins is genuinely better.
+    A tie keeps the production model.
     """
     current = production_version(model_name)
     if current is None:
         print(f"No production version of {model_name} yet")
         return True
-    production = mlflow.pyfunc.load_model(f"models:/{model_name}/{current.version}")
-    production_f1 = f1_score(y, production.predict(X_raw))
-    mlflow.log_metric("production_test_f1", production_f1)
-    mlflow.set_tag("production_version", current.version)
-    print(f"Candidate test F1 {candidate_f1:.4f}, production (version {current.version}) {production_f1:.4f}")
+    with tempfile.TemporaryDirectory() as tmp:
+        model_dir = Path(mlflow.artifacts.download_artifacts(
+            f"models:/{model_name}/{current.version}", dst_path=tmp))
+        production = mlflow.pyfunc.load_model(str(model_dir))
+        fingerprint_file = model_dir / FINGERPRINT_FILE
+        seen = set(json.loads(fingerprint_file.read_text())["fingerprints"]) if fingerprint_file.exists() else None
+
+    y = y.to_numpy()
+    unseen = np.array([fp not in seen for fp in test_fingerprints]) if seen is not None else None
+    if unseen is None:
+        mask, check = np.ones(len(y), bool), "fallback: production model has no training fingerprints"
+    elif unseen.sum() < MIN_FAIR_ROWS or y[unseen].sum() == 0:
+        mask, check = np.ones(len(y), bool), f"fallback: only {unseen.sum()} unseen test rows"
+    else:
+        mask, check = unseen, "unseen test rows only"
+
+    candidate_f1 = f1_score(y[mask], candidate.predict(X_raw[mask]))
+    production_f1 = f1_score(y[mask], production.predict(X_raw[mask]))
+    mlflow.log_metrics({
+        "fair_eval_rows": int(mask.sum()),
+        "fair_eval_excluded": int((~mask).sum()),
+        "candidate_fair_f1": candidate_f1,
+        "production_fair_f1": production_f1,
+    })
+    mlflow.set_tags({"production_version": current.version, "fair_check": check})
+    print(f"Comparison on {mask.sum()} of {len(y)} test rows ({check}): candidate F1 {candidate_f1:.4f}, "
+          f"production (version {current.version}) {production_f1:.4f}")
     return candidate_f1 > production_f1
 
 
 def train_model(data_dir, model_output, n_estimators=100, max_depth=None,
                 min_samples_leaf=1, max_features="sqrt", class_weight=None,
                 tune_iterations=0, random_state=42, registered_model_name=None,
-                feature_set="baseline", cv_seed=0):
+                feature_set="improved", cv_seed=0):
     data_dir = Path(data_dir)
     train = pd.read_csv(data_dir / "train.csv")
     test = pd.read_csv(data_dir / "test.csv")
@@ -149,12 +198,20 @@ def train_model(data_dir, model_output, n_estimators=100, max_depth=None,
                 skops_trusted_types=["features.add_features", "sklearn.tree._tree.Tree"],
                 signature=infer_signature(raw_example, model.predict(raw_example)),
                 input_example=raw_example.head(3),
+                extra_pip_requirements=EXTRA_PIP_REQUIREMENTS,
             )
+            fingerprints = sorted(set(row_fingerprints(train)))
+            (Path(model_dir) / FINGERPRINT_FILE).write_text(json.dumps({
+                "columns": RAW_FEATURES + [TARGET],
+                "hash": "sha256 of the comma-joined values, first 16 hex characters",
+                "rows": len(train),
+                "fingerprints": fingerprints,
+            }))
             mlflow.log_artifacts(model_dir, artifact_path="model")
         # Set by the pipeline, which only registers a model that beats production.
         # Standalone runs register via register.py instead.
         if registered_model_name:
-            if beats_production(registered_model_name, test_metrics["test_f1"], raw_example, y_test):
+            if beats_production(registered_model_name, model, raw_example, y_test, row_fingerprints(test)):
                 version = register_run_model(run.info.run_id, registered_model_name)
                 decision = f"registered as version {version.version}"
             else:
@@ -183,7 +240,7 @@ if __name__ == "__main__":
     parser.add_argument("--tune_iterations", type=int, default=0)
     parser.add_argument("--random_state", type=int, default=42)
     parser.add_argument("--registered_model_name", default=None)
-    parser.add_argument("--feature_set", choices=sorted(FEATURE_SETS), default="baseline")
+    parser.add_argument("--feature_set", choices=sorted(FEATURE_SETS), default="improved")
     parser.add_argument("--cv_seed", type=int, default=0)
     args = parser.parse_args()
     train_model(**vars(args))

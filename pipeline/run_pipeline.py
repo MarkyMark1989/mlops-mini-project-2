@@ -18,10 +18,11 @@ from workspace import ROOT, get_ml_client
 sys.path.insert(0, str(ROOT / "src"))
 from components import (ENVIRONMENT_NAME, ENVIRONMENT_VERSION,  # noqa: E402
                         data_prep_component, train_component)
+from features import FEATURE_SETS  # noqa: E402
 from register import MODEL_NAME  # noqa: E402
 from tracking import EXPERIMENT_NAME  # noqa: E402
 
-SCHEDULE_NAME = "telecom-churn-weekly-retrain"
+SCHEDULE_NAME = "churn-weekly"
 
 
 @pipeline(
@@ -71,7 +72,7 @@ def main():
     # used by the endpoint deployments.
     parser.add_argument("--compute_size", default="Standard_D2s_v3")
     parser.add_argument("--tune_iterations", type=int, default=30)
-    parser.add_argument("--feature_set", choices=["baseline", "improved"], default="improved")
+    parser.add_argument("--feature_set", choices=sorted(FEATURE_SETS), default="improved")
     parser.add_argument("--schedule", action="store_true",
                         help="create a weekly (Monday 06:00 UTC) retraining schedule instead of a one-off run")
     parser.add_argument("--dry_run", action="store_true")

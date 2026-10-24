@@ -24,9 +24,9 @@ CV = RepeatedStratifiedKFold(n_splits=5, n_repeats=5, random_state=0)
 MIN_GAIN = 0.005      # mean F1 gain needed to keep a feature
 MIN_WINS = 18         # ...and it must win in at least 18 of the 25 folds
 
-# Settings found by the randomized search in question 4.
-TUNED = dict(n_estimators=100, max_depth=20, max_features="log2", min_samples_leaf=1,
-             class_weight="balanced")
+# Settings the randomized search chose for model v2 in question 4.
+TUNED = dict(n_estimators=300, max_depth=6, max_features=0.5, min_samples_leaf=2,
+             class_weight=None)
 
 
 def add_candidates(df):
@@ -97,7 +97,7 @@ def main():
 
     sets = {
         "Raw columns only": RAW_FEATURES,
-        "Current (AvgCallMins + HighServiceCalls)": RAW_FEATURES + ["AvgCallMins", "HighServiceCalls"],
+        "Original pair (AvgCallMins + HighServiceCalls)": RAW_FEATURES + ["AvgCallMins", "HighServiceCalls"],
         f"Selected ({' + '.join(chosen) or 'none'})": RAW_FEATURES + chosen,
     }
     print("\nWith the tuned settings from question 4:")

@@ -9,8 +9,8 @@
 
 Endpoint names must be unique within the Azure region (3-32 chars, letters/digits/hyphens).
 Deployments serve through score.py and conda.yaml in this folder. Pass --no_code to use
-Azure's no-code MLflow deployment instead; as of Oct 2026 its generated image lacks
-azureml-ai-monitoring, so its scoring script crashes on startup.
+Azure's no-code MLflow deployment instead. Its scoring script imports azureml-ai-monitoring,
+which train.py adds to every saved model's requirements.
 """
 import argparse
 import sys
