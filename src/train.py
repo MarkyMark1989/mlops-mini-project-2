@@ -5,7 +5,8 @@ With --tune_iterations > 0 the forest is tuned with a randomized search
 test set. --feature_set picks the derived features (see features.FEATURE_SETS);
 "improved" (raw columns + VoiceCharge) is the default, "baseline" the original set.
 --cv_seed fixes the CV splits; with the default of 0 the improved search picks
-the same settings under 4 of 5 split seeds (seed 42 was the odd one out).
+the settings that 4 of 5 split seeds agree on (analysis/seed_check.py: seeds 0
+to 3 agree, seed 4 picks a different forest).
 """
 import argparse
 import hashlib
