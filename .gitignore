@@ -21,3 +21,6 @@ report/build/node_modules/
 
 # Stray copy of a local MLflow store
 mlruns 2/
+
+# Word can only export to a file it was granted access to; the committed PDF is a copy of this
+report/MLOps_Mini_Project_2_Report_DRAFT.pdf
